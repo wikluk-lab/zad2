@@ -18,7 +18,7 @@ Potok został zdefiniowany w pliku .github/workflows/ci-cd.yml i składa się z 
 * **Rozwiązanie problemów z lukami:** Podczas pierwszych uruchomień Trivy zablokował potok z powodu luk wykrytych w domyślnych pakietach Pythona. Problem został rozwiązany poprzez zmianę obrazu bazowego w Dockerfile na minimalistyczną dystrybucję python:3.11-alpine oraz dodanie instrukcji wymuszającej aktualizację bibliotek systemowych (pip, wheel, jaraco.context). Po tym zabiegu skaner wykazał 0 podatności.
 
 ### 3. Budowanie Multi-Arch i Publikacja w GHCR
-* Po pomyślnym przejściu skanowania, obraz jest budowany jednocześnie dla architektur linux/amd64 (standardowe PC) oraz linux/arm64 (np. procesory Apple Silicon czy Raspberry Pi).
+* Po pomyślnym przejściu skanowania, obraz jest budowany jednocześnie dla architektur linux/amd64 oraz linux/arm64.
 * Gotowy pakiet jest automatycznie wysyłany do oficjalnego rejestru GHCR pod adres: ghcr.io/wikluk-lab/zad2.
 
 ---
