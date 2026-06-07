@@ -1,46 +1,36 @@
-# Zadanie 2 – Potok CI/CD w GitHub Actions
+# Sprawozdanie z Zadania 2 – Potok CI/CD w GitHub Actions
 
-Repozytorium zawiera realizację potoku CI/CD przy użyciu GitHub Actions dla aplikacji pogodowej z Zadania 1. Potok automatyzuje proces budowania, skanowania pod kątem bezpieczeństwa oraz publikacji obrazu kontenera.
-
-## Struktura projektu
-* `.github/workflows/ci-cd.yml` – definicja potoku GitHub Actions.
-* `Dockerfile` – konfiguracja wieloetapowego budowania obrazu (Multi-stage build) opartego na bezpiecznym obrazie `python:3.11-alpine`.
-* `requirements.txt` – plik zależności aplikacji Python.
-* `main.py` – kod źródłowy aplikacji.
+Repozytorium zawiera konfigurację automatycznego potoku CI/CD realizowanego za pomocą GitHub Actions. Celem zadania było automatyczne budowanie, testowanie pod kątem podatności (CVE) oraz publikacja wieloarchitekturowego obrazu aplikacji pogodowej z Zadania 1.
 
 ---
 
-## Opis konfiguracji i realizacji etapów zadania
+## Opis konfiguracji poszczególnych etapów
 
-### 1. Budowanie i mechanizm pamięci podręcznej (Cache)
-W etapie budowania wykorzystano akcję `docker/build-push-action@v6`. W celu optymalizacji czasu działania potoku wdrożono zewnętrzny mechanizm pamięci podręcznej (cache) przechowywany w rejestrze Docker Hub pod adresem `docker.io/wikluks2/app-cache:cache`. Warstwy obrazu są pobierane i zapisywane z parametrem `mode=max`, co znacznie skraca czas kolejnych uruchomień potoku.
+Potok został zdefiniowany w pliku `.github/workflows/ci-cd.yml` i składa się z następujących kroków:
 
-### 2. Testy bezpieczeństwa (Skanowanie CVE)
-Zgodnie z wymaganiami bezpieczeństwa, przed publikacją obrazu uruchamiane jest automatyczne skanowanie podatności za pomocą narzędzia **Trivy** (`aquasecurity/trivy-action@v0.24.0`). 
-* Skaner weryfikuje obecność luk o statusie **HIGH** oraz **CRITICAL**.
-* Konfiguracja zawiera warunek błędu (`exit-code: '1'`), co oznacza, że wykrycie jakiejkolwiek poważnej luki bezpieczeństwa natychmiast przerywa i blokuje dalsze kroki potoku (obraz nie zostanie opublikowany).
-* W celu zapewnienia pełnego bezpieczeństwa, obraz bazowy został zoptymalizowany do wersji `alpine`, a fabryczne pakiety Pythona są aktualizowane wewnątrz `Dockerfile`, co pozwoliło uzyskać wynik 0 podatności systemowych.
+### 1. Konfiguracja środowiska i pamięci podręcznej (Cache)
+* Do budowania wykorzystano mechanizm **Docker Buildx** oraz emulator **QEMU**, co pozwala na kompilację obrazów na różne architektury procesorów.
+* Wdrożono zewnętrzny mechanizm cache'owania warstw kontenera na Docker Hubie (`wikluks2/app-cache`). Dzięki temu ponowne uruchomienie potoku nie buduje wszystkiego od zera, co drastycznie skraca czas działania Actions.
 
-### 3. Budowanie wieloarchitekturowe (Multi-Arch)
-Po pomyślnym przejściu testów bezpieczeństwa, potok buduje ostateczną wersję obrazu jednocześnie dla dwóch architektur sprzętowych:
-* `linux/amd64`
-* `linux/arm64`
+### 2. Testy bezpieczeństwa (Skaner Trivy)
+* Przed wrzuceniem obrazu do oficjalnego rejestru, kontener jest prześwietlany skanerem **Trivy** pod kątem krytycznych podatności (`HIGH,CRITICAL`).
+* Zgodnie z wytycznymi, potok ma ustawiony parametr `exit-code: '1'`. Jeśli skaner wykryje niebezpieczne pakiety, działanie całego potoku zostaje natychmiast przerwane, a obraz nie trafi do sieci.
+* **Rozwiązanie problemów z lukami:** Podczas pierwszych uruchomień Trivy zablokował potok z powodu luk wykrytych w domyślnych pakietach Pythona. Problem został rozwiązany poprzez zmianę obrazu bazowego w `Dockerfile` na minimalistyczną dystrybucję `python:3.11-alpine` oraz dodanie instrukcji wymuszającej aktualizację bibliotek systemowych (`pip`, `wheel`, `jaraco.context`). Po tym zabiegu skaner wykazał 0 podatności.
 
-Wykorzystano do tego emulator `QEMU` (`docker/setup-qemu-action@v3`) oraz `Docker Buildx` (`docker/setup-buildx-action@v3`).
-
-### 4. Publikacja w rejestrze GHCR
-Gotowy, bezpieczny obraz wieloarchitekturowy jest automatycznie wypychany do rejestru **GitHub Container Registry (GHCR)** na konto organizacji/użytkownika: `ghcr.io/wikluk-lab/zad2`.
+### 3. Budowanie Multi-Arch i Publikacja w GHCR
+* Po pomyślnym przejściu skanowania, obraz jest budowany jednocześnie dla architektur `linux/amd64` (standardowe PC) oraz `linux/arm64` (np. procesory Apple Silicon czy Raspberry Pi).
+* Gotowy pakiet jest automatycznie wysyłany do oficjalnego rejestru **GitHub Container Registry (GHCR)** pod adres: `ghcr.io/wikluk-lab/zad2`.
 
 ---
 
 ## Schemat tagowania obrazów
 
-Wdrożono elastyczny i powszechnie stosowany w branży schemat wersjonowania (tagowania) obrazów kontenerów. Każdy zbudowany kontener otrzymuje jednocześnie dwa tagi:
+Wdrożono elastyczny system wersjonowania kontenerów. Podczas każdego udanego przejścia potoku, obraz otrzymuje dwa niezależne tagi:
 
-1. `latest` – tag wskazujący na najnowszą, aktualnie zbudowaną wersję obrazu w gałęzi głównej. Przydatny do pobierania zawsze aktualnej wersji.
-2. `${{ github.sha }}` – unikalny tag odpowiadający pełnemu identyfikatorowi (SHA) commitu z GitHuba, który wywołał potok. Zapewnia to pełną identyfikowalność – dokładnie wiadomo, z której wersji kodu źródłowego powstał dany kontener, i pozwala na łatwy powrót (rollback) do starszych wersji.
+1. **`latest`** – zawsze wskazuje na najnowszą, aktualną wersję aplikacji w głównym produkcyjnym kodzie.
+2. **`${{ github.sha }}`** – unikalny tag generowany na podstawie skrótu (SHA) konkretnego commitu z Gita. Pozwala to na pełną identyfikowalność – wiemy dokładnie, z której linijki kodu powstał dany obraz w rejestrze, i umożliwia łatwy powrót (rollback) do konkretnej starszej wersji w razie awarii.
 
-```yaml
-tags: |
-  ghcr.io/wikluk-lab/zad2:latest
-  ghcr.io/wikluk-lab/zad2:${{ github.sha }}
+---
+
+## Potwierdzenie poprawności działania
+Łańcuch GitHub Actions został uruchomiony i pomyślnie zweryfikowany. Wszystkie etapy – od logowania, przez kompilację środowiska, bezbłędny test Trivy, aż po spakowanie manifestu Multi-Arch i push do GHCR – kończą się zielonym statusem powodzenia (sukces potoku). Przesłany obraz jest widoczny i gotowy do pobrania w zakładce *Packages* na profilu GitHub.
