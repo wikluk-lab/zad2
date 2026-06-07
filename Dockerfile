@@ -4,12 +4,15 @@ WORKDIR /build
 
 COPY requirements.txt .
 
-RUN pip install --no-cache-dir --prefix=/install -r requirements.txt
+RUN pip install --no-cache-dir --upgrade pip wheel setuptools jaraco.context && \
+    pip install --no-cache-dir --prefix=/install -r requirements.txt
 
 FROM python:3.11-alpine
 
 LABEL org.opencontainers.image.authors="Wiktor Luksik"
 LABEL org.opencontainers.image.title="Pogoda - zad1"
+
+RUN pip install --no-cache-dir --upgrade pip wheel setuptools jaraco.context
 
 COPY --from=builder /install /usr/local
 
